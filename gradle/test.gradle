@@ -45,6 +45,8 @@ gradle.taskGraph.whenReady({ graph ->
 
 
 subprojects {
+  apply plugin: 'com.github.pedjak.dockerized-test'
+
   dependencies {
     testCompile ('com.github.stefanbirkner:system-rules:' + project.'system-rules.version') {
       exclude module: 'junit-dep'
@@ -130,6 +132,77 @@ subprojects {
       excludeCategories 'com.gemstone.gemfire.test.junit.categories.FlakyTest'
     }
     forkEvery 30
+
+    maxParallelForks = 20
+
+    docker {
+      // base image for creating docker containers that execute the tests
+      image = 'gemfire/centos7-gradle'
+
+      // volumes mounted to the containers
+      // in a form: host_dir : container_dir
+      def gradleHome = System.getenv("GRADLE_USER_HOME")
+      def pwd = System.getenv("PWD")
+      def java_home = System.getenv("JAVA_HOME")
+      volumes = ["${gradleHome}":gradleHome]
+      volumes << ["${pwd}":pwd]
+
+      // specify the user for starting Gradle test worker
+      // within the container, default to current user
+      // user = 'control'
+
+      argsInspect = { List args ->
+        def javaHomeIdx = 0
+        def i = args.iterator()
+        def j = 0
+        while (i.hasNext()) {
+          if (i.next() == '-e') {
+            def x = i.next()
+            j++
+            if (x.startsWith('JAVA_HOME')) {
+              javaHomeIdx = j
+            }
+          }
+          j++
+        }
+
+        //        if (javaHomeIdx > 0) {
+        //          args.removeAt(javaHomeIdx-1)
+        //          args.removeAt(javaHomeIdx-1)
+        //        }
+
+        // custom args processing and tweaking
+        // of the docker command starting the testworker inside a container
+        // returned args will be used for the final docker container start
+        def javaIdx = 0
+        def javaCmd = ["( ulimit -n 2048; "]
+        args.eachWithIndex { val, idx ->
+          if (val == 'java') {
+            javaIdx = idx
+          }
+          if (javaIdx > 0) {
+            javaCmd << val
+          }
+        }
+
+        if (javaIdx != 0) {
+          javaCmd << ")"
+          args = args.subList(0, javaIdx)
+          args.addAll("/bin/bash", "-c", javaCmd.join(" "))
+        }
+
+        // Infer the index of this invocation
+        def matcher = (args[args.size - 1] =~ /.*Executor (\d*).*/)
+
+        args[3] = args[3] + matcher[0][1]
+        def workdir = new File(args[3])
+        println "--->>> making ${workdir}"
+        workdir.mkdirs()
+        //        println args
+
+        args
+      }
+    }
   }
   
   task flakyTest(type:Test) {
