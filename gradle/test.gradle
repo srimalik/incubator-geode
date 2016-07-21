@@ -133,7 +133,7 @@ subprojects {
     }
     forkEvery 30
 
-    maxParallelForks = 20
+    maxParallelForks = 5
 
     docker {
       // base image for creating docker containers that execute the tests
