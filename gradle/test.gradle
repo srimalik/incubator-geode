@@ -137,7 +137,7 @@ subprojects {
 
     docker {
       // base image for creating docker containers that execute the tests
-      image = 'gemfire/ubuntu-jdk8-docker'
+      image = 'gemfire/ubuntu-jdk8'
 
       // volumes mounted to the containers
       // in a form: host_dir : container_dir
