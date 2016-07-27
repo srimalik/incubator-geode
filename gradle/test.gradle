@@ -45,8 +45,6 @@ gradle.taskGraph.whenReady({ graph ->
 
 
 subprojects {
-  apply plugin: 'com.github.pedjak.dockerized-test'
-
   dependencies {
     testCompile ('com.github.stefanbirkner:system-rules:' + project.'system-rules.version') {
       exclude module: 'junit-dep'
@@ -132,95 +130,6 @@ subprojects {
       excludeCategories 'com.gemstone.gemfire.test.junit.categories.FlakyTest'
     }
     forkEvery 30
-
-    maxParallelForks = 5
-
-    docker {
-      // base image for creating docker containers that execute the tests
-      image = 'gemfire/ubuntu-jdk8'
-
-      // volumes mounted to the containers
-      // in a form: host_dir : container_dir
-      def pwd = System.getenv('PWD')
-      def gradleHome = System.getenv('GRADLE_USER_HOME') ?: "${System.getenv('HOME')}/.gradle"
-      volumes = ["${gradleHome}":gradleHome]
-
-      // Figure out if we're building Geode or GemFire
-      if (new File(pwd, 'geode-core').exists()) {
-        volumes << ["${pwd}":pwd]
-      } else {
-        // Assume that our directory structure has 'open/' in the parent of the PWD.
-        // For example:
-        //   .../gemfire (PWD)
-        //      +--/gemfire-test
-        //      +--/etc
-        //   .../open
-        //      +--/geode-core
-        //      +--/etc
-        def gemfireDir = new File("${pwd}").getParent()
-        // Make sure we resolve symlinks by using getCanonicalPath
-        def geodeDir = new File(gemfireDir, 'open').getCanonicalPath()
-        volumes << ["${gemfireDir}": gemfireDir]
-        volumes << ["${geodeDir}": geodeDir]
-      }
-
-      // specify the user for starting Gradle test worker
-      // within the container, default to current user
-      // user = 'control'
-
-      argsInspect = { List args ->
-        def javaHomeIdx = 0
-        def i = args.iterator()
-        def j = 0
-        while (i.hasNext()) {
-          if (i.next() == '-e') {
-            def x = i.next()
-            j++
-            if (x.startsWith('JAVA_HOME')) {
-              javaHomeIdx = j
-            }
-          }
-          j++
-        }
-
-        // Remove JAVA_HOME env variable - it might not be the same as the container needs
-        if (javaHomeIdx > 0) {
-          args.removeAt(javaHomeIdx-1)
-          args.removeAt(javaHomeIdx-1)
-        }
-
-        // custom args processing and tweaking
-        // of the docker command starting the testworker inside a container
-        // returned args will be used for the final docker container start
-        def javaIdx = 0
-        def javaCmd = ["( ulimit -n 2048; "]
-        args.eachWithIndex { val, idx ->
-          if (val == 'java') {
-            javaIdx = idx
-          }
-          if (javaIdx > 0) {
-            javaCmd << val
-          }
-        }
-
-        if (javaIdx != 0) {
-          javaCmd << ")"
-          args = args.subList(0, javaIdx)
-          args.addAll("/bin/bash", "-c", javaCmd.join(" "))
-        }
-
-        // Infer the index of this invocation
-        def matcher = (args[args.size - 1] =~ /.*Executor (\d*).*/)
-
-        args[3] = args[3] + matcher[0][1]
-        def workdir = new File(args[3])
-        // println "--->>> making ${workdir}"
-        workdir.mkdirs()
-        // println args
-
-        args
-      }
-    }
   }
   
   task flakyTest(type:Test) {
